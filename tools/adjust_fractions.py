@@ -58,6 +58,7 @@ def main():
         if i == 0:
             aggFracs = np.zeros(fData['fraction'].shape)
             aggUHs = np.zeros(fData['unit_hydrograph'].shape)
+            time_step = fData['time'][1]-fData['time'][0]	    	    
 
         y, x = ((fData['fraction'] > 0.0)*(gridData['mask'] == 1)).nonzero()
         
@@ -134,7 +135,7 @@ def main():
                                       options['out_format'], globs[fname], attrs[fname])
 
                 if options['rvic_params']:
-                    j = i + 1
+                    j = i + 1 # setup for fortran indexing
                     if i == 0:
                         uh_points = out_uh
                         frac_points = out_fracs
@@ -158,7 +159,7 @@ def main():
                         # get a few global values
                         t_subset_length = options['subset']
                         t_full_length = full_length
-                        t_timestep = 'placeholder'
+                        t_timestep = time_step
 
                     else:
                         uh_points = np.append(uh_points, out_uh, axis=1)
@@ -184,13 +185,15 @@ def main():
 
             outFile = os.path.join(files['outPath'], options['rvic_params'])
             
-            uh_points *= frac_points * gridData['area'][y_ind_points,x_ind_points] * earthRadius * earthRadius
+            uh_points *= frac_points * (gridData['area'][y_ind_points,x_ind_points] * earthRadius * earthRadius)
+            for p, ind in enumerate(point2outlet_inds):
+                uh_points[:,p] /= gridData['area'][y_ind_outlets[ind-1],x_ind_outlets[ind-1]] * earthRadius * earthRadius
 
             write_param_file(outFile, options['out_format'], times, t_subset_length, t_full_length, 
                              t_timestep, uh_points, frac_points, lon_points, lat_points,
                              cell_id_points, x_ind_points, y_ind_points,
                              t_offset, point2outlet_inds, cell_id_outlets, lon_outlets,
-                             lat_outlets, x_ind_outlets, y_ind_outlets, outlet_nums)
+                             lat_outlets, x_ind_outlets, y_ind_outlets, outlet_nums, files['gridFile'])
         if files['diagPath']:
             make_plot(gridFracs, "gridFracs", aggFracs, "aggFracs", aggFracs2,
                       "aggFracs2", aggFracs2-gridFracs , "aggFracs2-gridFracs",
@@ -202,7 +205,7 @@ def write_param_file(outFile, out_format, times, t_subset_length, t_full_length,
                      t_timestep, uh_points, frac_points, lon_points, lat_points,
                      cell_id_points, x_ind_points, y_ind_points,
                      time_offset_points, point2outlet_inds, cell_id_outlets, lon_outlets,
-                     lat_outlets, x_ind_outlets, y_ind_outlets, outlet_nums):
+                     lat_outlets, x_ind_outlets, y_ind_outlets, outlet_nums, domain_file):
     
     f = Dataset(outFile, 'w', format = out_format)
 
@@ -212,7 +215,7 @@ def write_param_file(outFile, out_format, times, t_subset_length, t_full_length,
     n_outlets = f.createDimension('n_outlets', len(outlet_nums))
     
     # Variables
-    time = f.createVariable('time','i8',('time',))
+    time = f.createVariable('time','i4',('time',))
     time.standard_name = 'time'    
     time.units = 'timesteps'
     time.subset_length = t_subset_length
@@ -222,7 +225,7 @@ def write_param_file(outFile, out_format, times, t_subset_length, t_full_length,
 
     uh_point = f.createVariable('uh_point', 'f8', ('time', 'n_points',))
     uh_point.long_name = 'Unit Hydrographs'
-    uh_point.units = 'm^2'
+    uh_point.units = 'unitless'
     uh_point.description = 'Subset and flattened unit hydrograph'
     uh_point[:,:] = uh_points
 
@@ -232,19 +235,19 @@ def write_param_file(outFile, out_format, times, t_subset_length, t_full_length,
     # frac_point.description = 'Fraction of grid cell contributing to outlet point'
     # frac_point[:] = fractions
 
-    cell_id_point = f.createVariable('cell_id_point', 'i8', ('n_points',))
+    cell_id_point = f.createVariable('cell_id_point', 'i4', ('n_points',))
     cell_id_point.long_name = 'Cell ID Point'
     cell_id_point.units = 'unitless'
     cell_id_point.description = 'Land Model Grid Cell ID'
     cell_id_point[:] = cell_id_points
 
-    y_ind_point = f.createVariable('y_ind_point', 'i8',('n_points',))
+    y_ind_point = f.createVariable('y_ind_point', 'i4',('n_points',))
     y_ind_point.long_name = 'Y Index Location'
     y_ind_point.units = 'unitless'
     y_ind_point.description = 'Y Index Location of Origin Grid Cell'
     y_ind_point[:] = y_ind_points
 
-    x_ind_point = f.createVariable('x_ind_point', 'i8', ('n_points',))
+    x_ind_point = f.createVariable('x_ind_point', 'i4', ('n_points',))
     x_ind_point.long_name = 'X Index Location'
     x_ind_point.units = 'unitless'
     x_ind_point.description = 'X Index Location of Origin Grid Cell'
@@ -262,35 +265,35 @@ def write_param_file(outFile, out_format, times, t_subset_length, t_full_length,
     lat_point.description = 'Latitude Coordinate of Origin Grid Cell'
     lat_point[:] = lat_points
 
-    time_offset_point = f.createVariable('t_offset_point', 'i8', ('n_points',))
+    time_offset_point = f.createVariable('t_offset_point', 'i4', ('n_points',))
     time_offset_point.long_name = 'time_offset'
     time_offset_point.units = 'timesteps'
     time_offset_point.description = 'Number of ommited leading timesteps'
     time_offset_point[:] = time_offset_points
 
-    point2outlet_index = f.createVariable('point2outlet_index', 'i8', ('n_points',))
+    point2outlet_index = f.createVariable('point2outlet_index', 'i4', ('n_points',))
     point2outlet_index.long_name = 'Point to outlet index mapping'
     point2outlet_index.description = '1D outlet index associated with source point'
     point2outlet_index[:] = point2outlet_inds
 
-    cell_id_outlet = f.createVariable('cell_id_outlet', 'i8', ('n_outlets',))
+    cell_id_outlet = f.createVariable('cell_id_outlet', 'i4', ('n_outlets',))
     cell_id_outlet.long_name = 'Outlet ID Point'
     cell_id_outlet.units = 'unitless'
     cell_id_outlet.description = 'Outlet Grid Cell ID'
     cell_id_outlet[:] = cell_id_outlets
 
-    outlet_num = f.createVariable('outlet_num', 'i8', ('n_outlets',))
+    outlet_num = f.createVariable('outlet_num', 'i4', ('n_outlets',))
     outlet_num.long_name = 'Outlet Index'
     outlet_num.description = 'Outlet Point Index'
     outlet_num[:] = outlet_nums
 
-    x_ind_outlet = f.createVariable('x_ind_outlet', 'i8', ('n_outlets',))
+    x_ind_outlet = f.createVariable('x_ind_outlet', 'i4', ('n_outlets',))
     x_ind_outlet.long_name = 'X Index Location'
     x_ind_outlet.units = 'unitless'
     x_ind_outlet.description = 'X Index Location of Outlet Grid Cell'
     x_ind_outlet[:] = x_ind_outlets
        
-    y_ind_outlet = f.createVariable('y_ind_outlet', 'i8', ('n_outlets',))
+    y_ind_outlet = f.createVariable('y_ind_outlet', 'i4', ('n_outlets',))
     y_ind_outlet.long_name = 'Y Index Location'
     y_ind_outlet.units = 'unitless'
     y_ind_outlet.description = 'Y Index Location of Outlet Grid Cell'
@@ -308,13 +311,25 @@ def write_param_file(outFile, out_format, times, t_subset_length, t_full_length,
     lat_outlet.description = 'Latitude Coordinate of Outlet Grid Cell'
     lat_outlet[:] = lat_outlets
 
+    full_length = f.createVariable('full_length','i4')
+    full_length.description = 'Number of timesteps in the original flull length unit hydrograph (before subseting)'
+    full_length.units = 'timesteps'
+    full_length[:] = t_full_length
+
+    subset_length = f.createVariable('subset_length','i4')
+    subset_length.description = 'Number of timesteps included in subset, all others assumed to be zero'
+    subset_length.units = 'timesteps'
+    subset_length[:] = t_subset_length
+
+    timestep = f.createVariable('timestep','i4')
+    timestep.description = 'Unit Hydrograph Timestep'
+    timestep.units = 'seconds'
+    timestep[:] = t_timestep
+
     # Globals
     f.description = 'Flattened uh/fraction RVIC parameter file'
     f.history = 'Created ' + tm.ctime(tm.time())
-    f.subset_length = t_subset_length
-    f.full_time_length = t_full_length
-    f.timestep = t_timestep
-
+    f.domain_file = domain_file
     f.close()
 
 def subset(uh, subset, threshold):
