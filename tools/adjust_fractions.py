@@ -14,6 +14,7 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 import argparse
 
 earthRadius = 6.37122e6 # meters
+# All indexes are zero based
 
 def main():
 
@@ -24,7 +25,7 @@ def main():
     except:
         raise IOError('Need gridFile')
 
-    cell_id_grid = np.flipud(np.arange(gridData['yc'].size).reshape(gridData['yc'].shape))
+    cell_id_grid = np.arange(gridData['yc'].size).reshape(gridData['yc'].shape)
 
     # read in all the inputFiles, just store the flattened data (not the full grid)
     lf = len(files['inputFiles'])
@@ -135,7 +136,6 @@ def main():
                                       options['out_format'], globs[fname], attrs[fname])
 
                 if options['rvic_params']:
-                    j = i + 1 # setup for fortran indexing
                     if i == 0:
                         uh_points = out_uh
                         frac_points = out_fracs
@@ -154,7 +154,7 @@ def main():
                         lat_outlets = np.array(lat_outlet_dict[fname])
                         x_ind_outlets = np.array(x_ind_outlet_dict[fname])
                         y_ind_outlets = np.array(y_ind_outlet_dict[fname])
-                        outlet_nums = np.array(j)
+                        outlet_nums = np.array(i)
 
                         # get a few global values
                         t_subset_length = options['subset']
@@ -170,7 +170,7 @@ def main():
                         y_ind_points = np.append(y_ind_points, y_ind_point_dict[fname])
                         cell_id_points = np.append(cell_id_points, cell_id_point_dict[fname])
                         t_offset = np.append(t_offset, offset)
-                        point2outlet_inds = np.append(point2outlet_inds, np.zeros_like(offset)+j)
+                        point2outlet_inds = np.append(point2outlet_inds, np.zeros_like(offset)+i)
                         
                         # outlet specific inputs
                         cell_id_outlets = np.append(cell_id_outlets, cell_id_outlet_dict[fname])
@@ -178,7 +178,7 @@ def main():
                         lat_outlets = np.append(lat_outlets, lat_outlet_dict[fname])
                         x_ind_outlets = np.append(x_ind_outlets, x_ind_outlet_dict[fname])
                         y_ind_outlets = np.append(y_ind_outlets, y_ind_outlet_dict[fname])     
-                        outlet_nums = np.append(outlet_nums, j)        
+                        outlet_nums = np.append(outlet_nums, i)        
 
         if options['rvic_params']:
             print 'writing param file...'
@@ -187,7 +187,7 @@ def main():
             
             uh_points *= frac_points * (gridData['area'][y_ind_points,x_ind_points] * earthRadius * earthRadius)
             for p, ind in enumerate(point2outlet_inds):
-                uh_points[:,p] /= gridData['area'][y_ind_outlets[ind-1],x_ind_outlets[ind-1]] * earthRadius * earthRadius
+                uh_points[:,p] /= gridData['area'][y_ind_outlets[ind],x_ind_outlets[ind]] * earthRadius * earthRadius
 
             write_param_file(outFile, options['out_format'], times, t_subset_length, t_full_length, 
                              t_timestep, uh_points, frac_points, lon_points, lat_points,
@@ -228,12 +228,6 @@ def write_param_file(outFile, out_format, times, t_subset_length, t_full_length,
     uh_point.units = 'unitless'
     uh_point.description = 'Subset and flattened unit hydrograph'
     uh_point[:,:] = uh_points
-
-    # frac_point = f.createVariable('frac_point', 'f8', ('n_points',))
-    # frac_point.long_name = 'Fraction'
-    # frac_point.units = 'unitless'
-    # frac_point.description = 'Fraction of grid cell contributing to outlet point'
-    # frac_point[:] = fractions
 
     cell_id_point = f.createVariable('cell_id_point', 'i4', ('n_points',))
     cell_id_point.long_name = 'Cell ID Point'
@@ -329,7 +323,7 @@ def write_param_file(outFile, out_format, times, t_subset_length, t_full_length,
     # Globals
     f.description = 'Flattened uh/fraction RVIC parameter file'
     f.history = 'Created ' + tm.ctime(tm.time())
-    f.domain_file = domain_file
+    f.domain_file = os.path.split(domain_file)[1]
     f.close()
 
 def subset(uh, subset, threshold):
