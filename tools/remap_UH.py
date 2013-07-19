@@ -51,7 +51,7 @@ def main():
         else:
             combined = np.dstack(([Inputs['yc'].ravel(),Inputs['xc'].ravel()]))[0]
         
-        cell_ids = np.flipud(np.arange(Inputs['yc'].size).reshape(Inputs['yc'].shape))
+        cell_ids = np.arange(Inputs['yc'].size).reshape(Inputs['yc'].shape)
 
         points=list(np.vstack((np.array(lats),np.array(lons))).transpose())
 
